@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Token Launch Radar — pre-token protocols ranked by implied value</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-inner">
+    <p class="kicker">Token Launch Radar</p>
+    <h1>Protocols that have not launched a token yet, priced as if they did.</h1>
+    <p class="lede" id="summary">Loading the board…</p>
+  </div>
+</header>
+<main>
+  <section class="controls" aria-label="Board controls">
+    <label class="control grow">Search
+      <input id="q" type="search" placeholder="Name or slug, e.g. morpho">
+    </label>
+    <label class="control">Category
+      <select id="category"><option value="">All categories</option></select>
+    </label>
+    <label class="control">Chain
+      <select id="chain"><option value="">All chains</option></select>
+    </label>
+    <label class="control">Show
+      <select id="scope">
+        <option value="all">Whole board</option>
+        <option value="watchlist">Watchlist only</option>
+        <option value="early">Early radar only</option>
+      </select>
+    </label>
+    <label class="control">Sort by
+      <select id="sort">
+        <option value="rank">Rank (implied value)</option>
+        <option value="tvl">TVL, high to low</option>
+        <option value="growth">7d growth, high to low</option>
+        <option value="age">Age without a token, oldest first</option>
+      </select>
+    </label>
+  </section>
+  <p class="count" id="count" role="status"></p>
+  <section id="board" aria-label="Ranked board"></section>
+  <section id="detail" hidden aria-label="Protocol detail"></section>
+  <section class="method" id="method" aria-label="How the values are derived"></section>
+  <section class="live" id="live" aria-label="Protocols whose token already trades"></section>
+</main>
+<footer>
+  <p>Implied value is this radar's own claim, derived only from the sealed snapshot named above. It is not a prediction that a token will be issued, or when. Figures are the snapshot's record: a protocol listed as pre-token records no token in that record.</p>
+</footer>
+<script src="../data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
