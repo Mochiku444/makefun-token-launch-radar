@@ -10,6 +10,10 @@
 // name is ever special-cased: one function prices every row, and the
 // dashboard states the whole method next to the board it produced.
 
+import { assessRisk, type RiskAssessment } from './risk.ts';
+
+export type { RiskAssessment } from './risk.ts';
+
 /** One protocol record, exactly as the sealed snapshot carries it. */
 export interface ProtocolRecord {
   slug: string;
@@ -364,6 +368,7 @@ export interface BoardRow {
     maturity_multiplier: number;
     breadth_multiplier: number;
   };
+  risk: RiskAssessment;
   farm_steps: string[];
 }
 
@@ -406,6 +411,7 @@ export function buildBoard(snapshot: Snapshot): BoardRow[] {
       maturity_multiplier: round4(s.maturityMult),
       breadth_multiplier: round4(s.breadthMult),
     },
+    risk: assessRisk(s.protocol, snapshot.as_of),
     farm_steps: farmPlan(s.protocol, s.ageDays),
   }));
 }
@@ -455,6 +461,10 @@ export interface RadarData {
   global_multiple: number;
   calibration: { category: string; multiple: number; comps: number }[];
   counts: { protocols: number; watchlist: number; board: number; early: number; live: number };
+  /** The priority watch list: the highest implied values at Low or Moderate risk. */
+  priority: { slug: string; name: string; implied_value_usd: number; risk_score: number; risk_tier: string }[];
+  /** How the board spreads across the risk tiers. */
+  risk_tiers: { Low: number; Moderate: number; Elevated: number; High: number };
   rows: (BoardRow & { farm_steps: string[] })[];
   live: LiveRow[];
 }
@@ -491,6 +501,22 @@ export function buildRadarData(snapshot: Snapshot, board: BoardRow[]): RadarData
       board: board.length,
       early: board.filter((r) => !r.on_watchlist).length,
       live: live.length,
+    },
+    priority: board
+      .filter((r) => r.risk.tier === 'Low' || r.risk.tier === 'Moderate')
+      .slice(0, 5)
+      .map((r) => ({
+        slug: r.slug,
+        name: r.name,
+        implied_value_usd: r.implied_value_usd,
+        risk_score: r.risk.score,
+        risk_tier: r.risk.tier,
+      })),
+    risk_tiers: {
+      Low: board.filter((r) => r.risk.tier === 'Low').length,
+      Moderate: board.filter((r) => r.risk.tier === 'Moderate').length,
+      Elevated: board.filter((r) => r.risk.tier === 'Elevated').length,
+      High: board.filter((r) => r.risk.tier === 'High').length,
     },
     rows: board,
     live,
