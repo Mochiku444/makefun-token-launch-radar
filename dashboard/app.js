@@ -38,7 +38,7 @@
     'Snapshot of ' + D.counts.protocols + ' protocols (DefiLlama, as of ' + D.as_of + '). ' +
     'The board ranks ' + D.counts.board + ' that record no token: all ' + D.counts.watchlist +
     ' on the $' + (D.floor_usd / 1e6) + 'M watchlist plus ' + D.counts.early +
-    ' early finds below it. Each value is calibrated on the ' + 'protocols in the same snapshot whose token already trades.';
+    ' early finds the watchlist leaves out. Each value is calibrated on the protocols in the same snapshot whose token already trades.';
 
   // --- controls -----------------------------------------------------
   var qEl = document.getElementById('q');
