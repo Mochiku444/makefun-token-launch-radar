@@ -97,9 +97,40 @@ export function recordsNoToken(p: ProtocolRecord): boolean {
 /** Names that end in a version marker are pools of another protocol, not launches. */
 const VERSIONED_NAME = /\s(V\d+(\.\d+)?|v\d+(\.\d+)?|\d+\.\d+)$/;
 
-/** A protocol the board may rank: pre-token, not an exchange, not a versioned pool. */
+/**
+ * Categories that are wrapped, staked or bridged products of a token that
+ * already trades: the same screen the house watchlist applies. WBTC is
+ * the standing example: its record shows no token, but it is a wrapped
+ * product of one that trades, so a launch radar must not rank it.
+ */
+const WRAPPED_PRODUCT_CATEGORIES = new Set([
+  'Bridge',
+  'Canonical Bridge',
+  'Liquid Staking',
+  'Liquid Restaking',
+  'Restaked BTC',
+  'CEX',
+]);
+
+/** A whole word wrapped, staked or staking anywhere in the name. */
+const WRAPPED_WORD = /\b(wrapped|staked|staking)\b/i;
+
+/** Names that begin with an exchange's name are that exchange's product. */
+const EXCHANGE_PREFIX = /^(Binance|Coinbase|Bybit|Kraken|Bitget|OKX|Bitfinex|Gemini)\b/;
+
+/**
+ * A protocol the board may rank as an early find: it records no token
+ * and passes the wrapped-product screen above. (Watchlist rows are
+ * always carried, screened or not: covering them is the gate's rule.)
+ */
 export function isRankable(p: ProtocolRecord): boolean {
-  return recordsNoToken(p) && p.category !== 'CEX' && !VERSIONED_NAME.test(p.name);
+  return (
+    recordsNoToken(p) &&
+    !WRAPPED_PRODUCT_CATEGORIES.has(p.category ?? '') &&
+    !VERSIONED_NAME.test(p.name) &&
+    !WRAPPED_WORD.test(p.name) &&
+    !EXCHANGE_PREFIX.test(p.name)
+  );
 }
 
 const DAY_MS = 86_400_000;
