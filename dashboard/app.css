@@ -77,6 +77,18 @@ tbody tr:hover { background: #182040; }
 }
 .badge.watch { background: var(--accent); color: var(--accent-ink); }
 .badge.early { background: #24304f; color: var(--ink-dim); }
+.badge.risk-low { background: #14532d; color: #bbf7d0; }
+.badge.risk-moderate { background: #3a3410; color: #fde68a; }
+.badge.risk-elevated { background: #4a2410; color: #fed7aa; }
+.badge.risk-high { background: #4c1119; color: #fecaca; }
+#priority { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 14px; }
+#priority .p-label { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); }
+#priority .chip {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px;
+  padding: 4px 12px; font-size: 13px; cursor: pointer; color: var(--ink);
+}
+#priority .chip:hover { border-color: var(--accent); }
+#priority .chip b { color: var(--accent); }
 .up { color: var(--up); } .down { color: var(--down); }
 .chains { color: var(--ink-dim); font-size: 13px; }
 

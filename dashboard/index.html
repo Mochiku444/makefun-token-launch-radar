@@ -35,6 +35,7 @@
     <label class="control">Sort by
       <select id="sort">
         <option value="rank">Rank (implied value)</option>
+        <option value="risk">Lowest risk first</option>
         <option value="tvl">TVL, high to low</option>
         <option value="growth">7d growth, high to low</option>
         <option value="age">Age without a token, oldest first</option>
@@ -42,6 +43,7 @@
     </label>
   </section>
   <p class="count" id="count" role="status"></p>
+  <section id="priority" aria-label="Priority watch list"></section>
   <section id="board" aria-label="Ranked board"></section>
   <section id="detail" hidden aria-label="Protocol detail"></section>
   <section class="method" id="method" aria-label="How the values are derived"></section>

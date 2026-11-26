@@ -17,7 +17,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { boardIssue, buildBoard, buildRadarData, dataScript, parseSnapshot } from './lib/model.ts';
+import { boardIssue, buildBoard, buildRadarData, dataScript, parseSnapshot, type RadarData } from './lib/model.ts';
 import { buildDossier } from './vendor/makefun-board.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -49,14 +49,82 @@ if (!existsSync(inputFile)) {
 }
 const outDir = argument('output', process.env.MAKEFUN_OUTPUT_DIR ?? '/output');
 
-const snapshot = parseSnapshot(readFileSync(inputFile, 'utf8'));
+// Ingest: the sealed snapshot is the radar's only data source (the
+// grading container has no network). A malformed or empty snapshot is
+// a clean refusal with a reason, never a stack trace.
+let snapshot;
+try {
+  snapshot = parseSnapshot(readFileSync(inputFile, 'utf8'));
+} catch (error) {
+  fail(`could not ingest the snapshot: ${error instanceof Error ? error.message : String(error)}`);
+}
+if (snapshot.protocols.length === 0) fail('the snapshot carries no protocols: nothing to rank');
+
 const board = buildBoard(snapshot);
 const issue = boardIssue(board, snapshot);
 if (issue !== null) fail(`the model built a board the gate refuses: ${issue}`);
+const radar = buildRadarData(snapshot, board);
+
+/** One structured log line: the run's events, machine-readable. */
+function log(event: string, fields: Record<string, unknown>): void {
+  process.stdout.write(`${JSON.stringify({ event, ...fields })}\n`);
+}
+
+/**
+ * The one-line summary of the run, for /output/entry.txt. It is built
+ * from the board's own figures, shortened deterministically until it
+ * fits the strict gate, and validated before anything is written:
+ * 1 to 140 UTF-8 characters, never blank.
+ */
+export function summaryLine(data: RadarData): string {
+  const top = data.rows[0];
+  const topText = top === undefined ? 'no rows' : `${top.name} $${(top.implied_value_usd / 1e6).toFixed(1)}M`;
+  const head =
+    `Token Launch Radar ${data.as_of}: ${data.counts.board} pre-token protocols ranked, ` +
+    `${data.counts.watchlist} watchlist covered; top ${topText}`;
+  // Prefer the full line with the model named; drop segments whole
+  // rather than cutting a word in half, and only then trim to a word
+  // boundary.
+  let line = `${head}; model ${data.model_version}.`;
+  if (line.length > 140) line = `${head}.`;
+  if (line.length > 140) {
+    const cut = line.slice(0, 137);
+    line = `${cut.slice(0, cut.lastIndexOf(' '))}...`;
+  }
+  if (line.trim().length < 1 || line.length > 140) {
+    throw new Error(`summary line out of gate: ${line.length} characters`);
+  }
+  new TextEncoder().encode(line); // raises if the line is not UTF-8 encodable
+  return line;
+}
+
+/** The run's structured state: everything a monitor needs, as JSON. */
+export function stateDocument(data: RadarData): Record<string, unknown> {
+  return {
+    radar: 'token-launch-radar',
+    model_version: data.model_version,
+    as_of: data.as_of,
+    source: data.source,
+    counts: data.counts,
+    risk_tiers: data.risk_tiers,
+    priority_watch: data.priority,
+    top: data.rows.slice(0, 10).map((r) => ({
+      rank: r.rank,
+      slug: r.slug,
+      implied_value_usd: r.implied_value_usd,
+      risk_score: r.risk.score,
+      risk_tier: r.risk.tier,
+    })),
+  };
+}
 
 mkdirSync(outDir, { recursive: true });
 writeFileSync(join(outDir, 'board.json'), `${JSON.stringify({ rows: board })}\n`);
-writeFileSync(join(outDir, 'data.js'), dataScript(buildRadarData(snapshot, board)));
+writeFileSync(join(outDir, 'data.js'), dataScript(radar));
+writeFileSync(join(outDir, 'state.json'), `${JSON.stringify(stateDocument(radar), null, 2)}\n`);
+const summary = summaryLine(radar);
+writeFileSync(join(outDir, 'entry.txt'), summary);
+log('board_written', { rows: board.length, watchlist: radar.counts.watchlist, summary_chars: summary.length });
 
 /** Copy a directory's regular files into the output, skipping dot names. */
 function copyTree(from: string, to: string): string[] {
@@ -86,4 +154,4 @@ for (const name of shots) {
 
 const dossier = buildDossier(outDir, { text_max_bytes: TEXT_MAX_BYTES });
 writeFileSync(join(outDir, 'dossier.json'), dossier);
-process.stdout.write(`token radar: ${board.length} rows, dossier ${dossier.length} bytes, wrote ${outDir}\n`);
+log('run_complete', { rows: board.length, dossier_bytes: dossier.length, out: outDir });
