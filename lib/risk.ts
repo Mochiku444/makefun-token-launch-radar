@@ -19,7 +19,9 @@
 //   volume anomalies       -> the 7-day TVL change: a fall of 25% or
 //                             more is an outflow shock; a rise of 60%
 //                             or more in a week is a parabolic spike
-//                             that rarely holds.
+//                             that rarely holds; no change on record
+//                             is unverified momentum, flagged, never
+//                             scored as a flat week.
 //
 // Each flag adds fixed points; the total is the risk score, 0..100,
 // and the tier names the band it falls in. The same record always
@@ -85,9 +87,13 @@ export function assessRisk(p: ProtocolRecord, asOf: string): RiskAssessment {
   } else if (p.tvl_usd < 50_000_000) {
     add('liquidity', 10, 'shallow liquidity: under $50M of TVL behind the implied value');
   }
-  // Momentum anomalies in the 7-day TVL change.
-  const change = p.change_7d ?? 0;
-  if (change <= -25) {
+  // Momentum anomalies in the 7-day TVL change. An unreported change
+  // is not a flat week: the record carries no momentum to verify, and
+  // the filter says so instead of scoring the gap as calm.
+  const change = p.change_7d;
+  if (change === null) {
+    add('momentum', 10, 'no seven-day change on record: the momentum behind this candidate cannot be verified');
+  } else if (change <= -25) {
     add('momentum', 20, `outflow shock: TVL fell ${Math.abs(change).toFixed(1)}% in seven days`);
   } else if (change >= 60) {
     add('momentum', 10, `parabolic spike: TVL rose ${change.toFixed(1)}% in seven days, a pace that rarely holds`);

@@ -201,7 +201,11 @@ export function calibrate(snapshot: Snapshot): Calibration {
 export const WEIGHTS = {
   growth_weight: 0.6,
   growth_floor_pct: -50,
-  growth_cap_pct: 100,
+  // Momentum credit stops at +60%: the same line where the risk filter
+  // starts calling a rise parabolic. Past it the model pays no extra
+  // premium for a spike the filter flags as a pace that rarely holds
+  // (the snapshot holds a +4,448% week, a listing artifact, not demand).
+  growth_cap_pct: 60,
   maturity_base: 0.72,
   maturity_span: 0.28,
   maturity_days: 1460,
@@ -211,7 +215,7 @@ export const WEIGHTS = {
 } as const;
 
 /** The model's version label, printed on the dashboard. */
-export const MODEL_VERSION = 'comp-calibrated-2';
+export const MODEL_VERSION = 'comp-calibrated-3';
 
 /** How many board rows the radar carries: the watchlist plus the early field. */
 export const BOARD_ROWS = 320;
@@ -315,11 +319,34 @@ function coreAction(p: ProtocolRecord, capital: number, chain: string): string {
 }
 
 /**
- * The farm plan for one protocol: six concrete steps, each carrying its
- * cost and its time, derived from the protocol's own category, chains,
- * TVL and age. Nothing here names a protocol the snapshot does not.
+ * The plan's risk step: the one instruction that answers this protocol's
+ * own risk record, chosen in the order the filter weighs them — an
+ * outflow first, then a parabolic spike, thin liquidity, a single-chain
+ * deployment — and a monthly re-check of the record for a clean row.
+ * Every figure in it is the protocol's own, read from the snapshot.
  */
-export function farmPlan(p: ProtocolRecord, ageDays: number | null): string[] {
+function riskStepFor(p: ProtocolRecord, risk: RiskAssessment, capital: number, gas: number): string {
+  const flagged = (id: string, points?: number) =>
+    risk.flags.some((f) => f.id === id && (points === undefined || f.points === points));
+  const change = p.change_7d;
+  if (flagged('momentum') && change !== null && change <= -25)
+    return `Treat the outflow as the first fact: ${p.name}'s TVL fell ${Math.abs(change).toFixed(1)}% in the seven days to the snapshot, so commit only half the capital now and add the rest only after two weeks in which TVL has stopped falling. Cost: nothing beyond patience. Time: 10 minutes a week for two weeks.`;
+  if (flagged('momentum') && change !== null && change >= 60)
+    return `Scale in against the spike: ${p.name}'s TVL rose ${change.toFixed(1)}% in seven days, a pace that rarely holds, so split the deposit into two tranches a week apart and skip the second if TVL has fallen back by more than a fifth by then. Cost: about ${money(gas)} of extra gas. Time: 15 minutes, twice.`;
+  if (flagged('liquidity', 20))
+    return `Size for thin liquidity: with only ${money(p.tvl_usd)} of TVL behind it, keep the position at the ${money(capital)} planned here and use the deepest pool, so an exit never has to move the market against you. Cost: nothing. Time: 5 minutes checking pool depth first.`;
+  if (flagged('concentration'))
+    return `Learn the one chain first: ${p.name} lives only on ${p.chains[0] ?? 'one chain'}, so bridge a ${money(10)} test amount in and back before the main deposit, and keep that chain's gas token topped up for the whole hold. Cost: about ${money(4)} of gas. Time: 20 minutes.`;
+  return `Re-check the record monthly: confirm ${p.name} still records no token and its TVL has not fallen by more than a quarter from ${money(p.tvl_usd)}; if either has changed, close and reassess rather than farming on habit. Cost: nothing. Time: 10 minutes a month.`;
+}
+
+/**
+ * The farm plan for one protocol: seven concrete steps, each carrying
+ * its cost and its time, derived from the protocol's own category,
+ * chains, TVL, age and risk record. Nothing here names a protocol the
+ * snapshot does not.
+ */
+export function farmPlan(p: ProtocolRecord, ageDays: number | null, risk: RiskAssessment): string[] {
   const chain = p.chains[0] ?? 'its main chain';
   const capital = capitalFor(p.tvl_usd);
   const hold = holdDaysFor(ageDays);
@@ -341,6 +368,7 @@ export function farmPlan(p: ProtocolRecord, ageDays: number | null): string[] {
   steps.push(
     `Hold the position untouched for at least ${hold} days; snapshots for points and airdrops reward duration, and closing early is the most common way farmers disqualify themselves. Cost: the opportunity cost of ${money(capital)} for ${hold} days. Time: ${hold} days.`,
     `Use the protocol's second feature once (a different pool, market or vault than the first deposit), because multi-product users are the cohort most launches reward first. Cost: about ${money(5)} of gas. Time: 15 minutes.`,
+    riskStepFor(p, risk, capital, gas),
     `Keep records as you go: save each transaction hash and a screenshot of the open position, so any later claim or appeal can be evidenced in minutes. Cost: nothing. Time: 5 minutes a week.`,
   );
   return steps.map((s) => (s.length > 600 ? `${s.slice(0, 596)}...` : s));
@@ -390,30 +418,33 @@ export function buildBoard(snapshot: Snapshot): BoardRow[] {
   for (const s of early) chosen.set(s.protocol.slug, s.protocol);
   const scored = [...chosen.values()].map((p) => scoreProtocol(p, snapshot.as_of, calibration));
   scored.sort((a, b) => b.implied - a.implied || (a.protocol.slug < b.protocol.slug ? -1 : 1));
-  return scored.map((s, i) => ({
-    rank: i + 1,
-    slug: s.protocol.slug,
-    name: s.protocol.name,
-    category: s.protocol.category,
-    chains: s.protocol.chains,
-    tvl_usd: s.protocol.tvl_usd,
-    change_7d: s.protocol.change_7d,
-    listed_at: s.protocol.listed_at,
-    age_days: s.ageDays,
-    token_status: 'pre-token' as const,
-    on_watchlist: watchlist.has(s.protocol.slug),
-    implied_value_usd: s.implied,
-    model: {
-      base_multiple: round4(s.baseMultiple),
-      comps: s.comps,
-      growth_pct: s.growthPct,
-      growth_multiplier: round4(s.growthMult),
-      maturity_multiplier: round4(s.maturityMult),
-      breadth_multiplier: round4(s.breadthMult),
-    },
-    risk: assessRisk(s.protocol, snapshot.as_of),
-    farm_steps: farmPlan(s.protocol, s.ageDays),
-  }));
+  return scored.map((s, i) => {
+    const risk = assessRisk(s.protocol, snapshot.as_of);
+    return {
+      rank: i + 1,
+      slug: s.protocol.slug,
+      name: s.protocol.name,
+      category: s.protocol.category,
+      chains: s.protocol.chains,
+      tvl_usd: s.protocol.tvl_usd,
+      change_7d: s.protocol.change_7d,
+      listed_at: s.protocol.listed_at,
+      age_days: s.ageDays,
+      token_status: 'pre-token' as const,
+      on_watchlist: watchlist.has(s.protocol.slug),
+      implied_value_usd: s.implied,
+      model: {
+        base_multiple: round4(s.baseMultiple),
+        comps: s.comps,
+        growth_pct: s.growthPct,
+        growth_multiplier: round4(s.growthMult),
+        maturity_multiplier: round4(s.maturityMult),
+        breadth_multiplier: round4(s.breadthMult),
+      },
+      risk,
+      farm_steps: farmPlan(s.protocol, s.ageDays, risk),
+    };
+  });
 }
 
 /** The first gate problem with a board, or null when the board is valid. */

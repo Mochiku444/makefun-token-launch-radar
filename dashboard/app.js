@@ -45,7 +45,9 @@
   var catEl = document.getElementById('category');
   var chainEl = document.getElementById('chain');
   var scopeEl = document.getElementById('scope');
+  var riskEl = document.getElementById('risk');
   var sortEl = document.getElementById('sort');
+  var TIER_ORDER = { Low: 0, Moderate: 1, Elevated: 2, High: 3 };
 
   var categories = {};
   var chains = {};
@@ -67,6 +69,7 @@
       if (chainEl.value && r.chains.indexOf(chainEl.value) === -1) return false;
       if (scopeEl.value === 'watchlist' && !r.on_watchlist) return false;
       if (scopeEl.value === 'early' && r.on_watchlist) return false;
+      if (riskEl.value && TIER_ORDER[r.risk.tier] > TIER_ORDER[riskEl.value]) return false;
       if (q && r.name.toLowerCase().indexOf(q) === -1 && r.slug.indexOf(q) === -1) return false;
       return true;
     });
@@ -85,6 +88,7 @@
     countEl.textContent = 'Showing ' + rows.length + ' of ' + D.rows.length + ' ranked protocols. Select a row for its detail and farm plan.';
     var html = '<table><thead><tr>' +
       '<th>#</th><th>Protocol</th><th>Status</th><th>Risk</th><th class="num">Implied value</th>' +
+      '<th class="num hide-sm">Per $1 TVL</th>' +
       '<th class="num">TVL</th><th class="num">7d</th><th class="hide-sm">Category</th>' +
       '<th class="hide-sm">Chains</th><th class="num hide-sm">No token for</th></tr></thead><tbody>';
     rows.forEach(function (r) {
@@ -94,6 +98,7 @@
         '<td><span class="badge ' + (r.on_watchlist ? 'watch' : 'early') + '">' + (r.on_watchlist ? 'Watchlist' : 'Early radar') + '</span></td>' +
         '<td><span class="badge risk-' + r.risk.tier.toLowerCase() + '">' + r.risk.tier + ' ' + r.risk.score + '</span></td>' +
         '<td class="num"><strong>' + money(r.implied_value_usd) + '</strong></td>' +
+        '<td class="num hide-sm">×' + (r.tvl_usd > 0 ? (r.implied_value_usd / r.tvl_usd).toFixed(2) : '—') + '</td>' +
         '<td class="num">' + money(r.tvl_usd) + '</td>' +
         '<td class="num ' + (r.change_7d > 0 ? 'up' : r.change_7d < 0 ? 'down' : '') + '">' + pct(r.change_7d) + '</td>' +
         '<td class="hide-sm">' + esc(r.category || '—') + '</td>' +
@@ -157,7 +162,7 @@
   document.getElementById('method').innerHTML =
     '<h2>How the radar prices a launch that has not happened</h2>' +
     '<p>Start from the market, not from a guess. In this same snapshot, ' + 'the protocols whose token already trades show what a dollar of TVL is worth in each category: the radar takes the median market-cap/TVL ratio per category (global median ' + D.global_multiple.toFixed(2) + '×) and applies it to each pre-token protocol\'s TVL. It then adjusts for momentum (the 7-day TVL change, weighted ×' + D.weights.growth_weight + ', clamped between ' + D.weights.growth_floor_pct + '% and +' + D.weights.growth_cap_pct + '%), for maturity (a protocol that has run longer with no token earns up to ×' + (D.weights.maturity_base + D.weights.maturity_span).toFixed(2) + '), and for breadth (each extra chain adds ' + (D.weights.breadth_per_chain * 100) + '%). Protocols whose token already trades are never ranked: they are listed below at the market\'s own value. Model version ' + esc(D.model_version) + '.</p>' +
-    '<p>Every candidate also passes a risk filter, scored 0 to 100 from the record itself: a wrapped-product or authority signal (+35), a versioned pool (+25), thin liquidity under $10M TVL (+20), an outflow shock of −25% in a week (+20), single-chain concentration (+15), an unproven 90-day track record (+15), a parabolic +60% spike (+10) and shallow liquidity (+10). This board spreads ' + D.risk_tiers.Low + ' Low, ' + D.risk_tiers.Moderate + ' Moderate, ' + D.risk_tiers.Elevated + ' Elevated and ' + D.risk_tiers.High + ' High; the priority watch above is where high implied value meets Low or Moderate risk.</p>' +
+    '<p>Every candidate also passes a risk filter, scored 0 to 100 from the record itself: a wrapped-product or authority signal (+35), a versioned pool (+25), thin liquidity under $10M TVL (+20), an outflow shock of −25% in a week (+20), single-chain concentration (+15), an unproven 90-day track record (+15), a parabolic +60% spike (+10), no seven-day figure on record (+10, unverified momentum) and shallow liquidity (+10). This board spreads ' + D.risk_tiers.Low + ' Low, ' + D.risk_tiers.Moderate + ' Moderate, ' + D.risk_tiers.Elevated + ' Elevated and ' + D.risk_tiers.High + ' High; the priority watch above is where high implied value meets Low or Moderate risk.</p>' +
     '<table><thead><tr><th>Category</th><th class="num">Live comps</th><th class="num">Median value per $1 TVL</th></tr></thead><tbody>' + calibRows + '</tbody></table>';
 
   // --- live tokens ----------------------------------------------------
@@ -184,7 +189,7 @@
     }
   }
 
-  [qEl, catEl, chainEl, scopeEl, sortEl].forEach(function (el) {
+  [qEl, catEl, chainEl, scopeEl, riskEl, sortEl].forEach(function (el) {
     el.addEventListener('input', renderBoard);
     el.addEventListener('change', renderBoard);
   });

@@ -81,12 +81,17 @@ export function summaryLine(data: RadarData): string {
   const topText = top === undefined ? 'no rows' : `${top.name} $${(top.implied_value_usd / 1e6).toFixed(1)}M`;
   const head =
     `Token Launch Radar ${data.as_of}: ${data.counts.board} pre-token protocols ranked, ` +
-    `${data.counts.watchlist} watchlist covered; top ${topText}`;
-  // Prefer the full line with the model named; drop segments whole
-  // rather than cutting a word in half, and only then trim to a word
-  // boundary.
-  let line = `${head}; model ${data.model_version}.`;
-  if (line.length > 140) line = `${head}.`;
+    `${data.counts.watchlist} watchlist covered`;
+  // Prefer the full line: risk scoring and the model both named. Drop
+  // whole segments in that order rather than cutting a word in half,
+  // and only then trim to a word boundary.
+  const candidates = [
+    `${head}, all risk-scored; top ${topText}; model ${data.model_version}.`,
+    `${head}, all risk-scored; top ${topText}.`,
+    `${head}; top ${topText}; model ${data.model_version}.`,
+    `${head}; top ${topText}.`,
+  ];
+  let line = candidates.find((c) => c.length <= 140) ?? candidates[candidates.length - 1]!;
   if (line.length > 140) {
     const cut = line.slice(0, 137);
     line = `${cut.slice(0, cut.lastIndexOf(' '))}...`;
